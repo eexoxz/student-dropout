@@ -2,6 +2,8 @@ import pandas as pd
 import numpy as np
 import joblib
 import streamlit as st
+import altair as alt
+import plotly.express as px
 
 from pathlib import Path
 from sklearn.model_selection import train_test_split
@@ -139,32 +141,57 @@ threshold_prob = st.sidebar.slider("Risk cut-off (probability)", 0.05, 0.95, 0.5
 
 tab1, tab2, tab3 = st.tabs(["📊 Dataset Analysis", "🧪 Risk Tool", "📈 Model Performance"])
 
+# --- TAB 1: Dataset Analysis (interactive, no static images) ---
 with tab1:
     st.subheader("Dataset Overview")
+
+    # Top KPIs
     c1, c2, c3 = st.columns(3)
     c1.metric("Rows", f"{df.shape[0]:,}")
     c2.metric("Columns", f"{df.shape[1]:,}")
-    c3.metric("Target balance (Class 1)", pct(y.mean()))
+    c3.metric("Target balance (Class 1)", f"{(y.mean()*100):.2f}%")
 
-    st.write("**Preview**")
+    # Preview & Summary
+    st.write("**Preview of Dataset**")
     st.dataframe(df.head())
 
-    st.write("**Summary (Numeric)**")
-    st.dataframe(df.select_dtypes(include=[np.number]).describe())
+    st.write("**Summary Statistics (Numeric Columns)**")
+    st.dataframe(df.select_dtypes(include=[np.number]).describe().T)
 
-    st.write("**Histogram (pick a column)**")
+    # Histogram (Altair)
+    st.divider()
+    st.write("### 📊 Histogram (pick a numeric column)")
     num_cols = df.select_dtypes(include=[np.number]).columns.tolist()
     if num_cols:
-        sel = st.selectbox("Numeric column", num_cols, index=0)
-        st.bar_chart(df[sel].value_counts().sort_index() if df[sel].nunique()<50 else df[sel])
+        sel  = st.selectbox("Numeric column", num_cols, index=0)
+        bins = st.slider("Number of bins", 5, 60, 20, step=1)
 
-    st.write("**Correlation Heatmap**")
-    import seaborn as sns
+        hist = (
+            alt.Chart(df)
+            .mark_bar()
+            .encode(
+                x=alt.X(f"{sel}:Q", bin=alt.Bin(maxbins=bins), title=sel),
+                y=alt.Y("count():Q", title="Frequency"),
+                tooltip=[alt.Tooltip(f"{sel}:Q", bin=alt.Bin(maxbins=bins), title=sel),
+                         alt.Tooltip("count():Q", title="Count")]
+            )
+            .properties(height=300)
+        )
+        st.altair_chart(hist, use_container_width=True)
+
+    # Correlation Heatmap (Plotly)
+    st.divider()
+    st.write("### 🔥 Correlation Heatmap (Numeric Features)")
     corr = df.select_dtypes(include=[np.number]).corr(numeric_only=True)
-    plt.figure(figsize=(8,6))
-    sns.heatmap(corr, cmap="coolwarm", center=0)
-    st.pyplot(plt.gcf())
-    plt.close()
+    fig = px.imshow(
+        corr,
+        color_continuous_scale="RdBu",
+        zmin=-1, zmax=1,
+        aspect="auto",
+        title="Correlation Heatmap"
+    )
+    fig.update_layout(margin=dict(l=0, r=0, t=40, b=0), height=520)
+    st.plotly_chart(fig, use_container_width=True)
 
 # --- TAB 2: Risk Tool (DISCRETE inputs tied to your encodings) ---
 with tab2:
